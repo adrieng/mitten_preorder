@@ -6,7 +6,7 @@
 
 (library
  (name Normalizer)
- (libraries sexplib menhirLib)
+ (libraries sexplib menhirLib warp)
  (flags (:standard -w -9-32-37))
  (modules_without_implementation abstract_mode_theory)
  (public_name normalize_lib))

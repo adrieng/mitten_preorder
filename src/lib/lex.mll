@@ -47,9 +47,10 @@ let keywords =
 let number = ['0'-'9']['0'-'9']*
 let whitespace = [' ' '\t']+
 let line_ending = '\r' | '\n' | "\r\n"
-let atom_first = ['a'-'z' 'A'-'Z' '_']
+let atom_first = ['a'-'z' 'A'-'Z' '_' '\'']
 let atom_next = ['a'-'z' 'A'-'Z' '_' '-' '*' '/' '0'-'9']
 let atom = atom_first atom_next*
+let foreign = "`[" [^ ']' '\n']+ ']'
 
 rule token = parse
   | number
@@ -110,6 +111,8 @@ rule token = parse
         (Grammar.ATOM input)
       end
     }
+  | foreign
+    { let s = lexeme lexbuf in FOREIGN (String.sub s 2 (String.length s - 3)) }
   | _
     { Printf.eprintf "Unexpected char: %s" (lexeme lexbuf); token lexbuf }
 and comment = parse

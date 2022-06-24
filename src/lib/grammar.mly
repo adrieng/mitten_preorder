@@ -4,6 +4,7 @@
 
 %token <int> NUMERAL
 %token <string> ATOM
+%token <string> FOREIGN
 %token COLON PIPE AT COMMA RIGHT_ARROW LEFT_ARROW UNDERSCORE POINT
 %token LPR RPR LBR RBR LANGLE RANGLE LBRACE RBRACE ATSIGN
 %token EQUALS
@@ -124,8 +125,8 @@ mode:
 modality:
  | mod1 = atomic_modality; POINT; mod2 = modality
     {List.append mod2 mod1}
-  | mu = atomic_modality
-    {mu};
+ | mu = atomic_modality
+    {mu}
 
 atomic_modality:
   | IDM
@@ -133,4 +134,6 @@ atomic_modality:
   | mu = name
     { [mu] }
   | LPR; mu = modality; RPR
-    {mu};
+    {mu}
+ | mu = FOREIGN
+    {[mu]}

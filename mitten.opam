@@ -12,6 +12,7 @@ depends: [
   "cmdliner" {>= "1.1.0"}
   "sexplib" {>= "0.11.0"}
   "ppx_compare" {>= "0.14"}
+  "pulsar"
 ]
 build: [
   [make]
