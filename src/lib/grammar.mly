@@ -20,6 +20,9 @@
 %start <Concrete_syntax.signature> sign
 %%
 
+%inline located(X):
+| x = X { Located.locate x $startpos $endpos }
+
 name:
   | s = ATOM
     { s }
@@ -69,11 +72,17 @@ spine:
     {[], t}
 ;
 
-term:
+check_desc:
+| tp = term; EQUALS; def = term { Check { term = def; tp; } }
+
+check:
+| cd = located(check_desc) { cd }
+
+term_desc:
   | f = atomic; args = list(spine)
     { Ap (f, args) }
-  | LET; name = name; COLON; tp = term; EQUALS; def = term; IN; body = term
-    { Let (Check {term = def; tp}, Binder {name; body}) }
+  | LET; name = name; COLON c = check; IN; body = term
+    { Let (c, Binder {name; body}) }
   | LET; name = name; EQUALS; def = term; IN; body = term
     { Let (def, Binder {name; body}) }
   | LPR t = term; AT; tp = term RPR
@@ -116,6 +125,9 @@ term:
   | MOD; mu = modality; tm = term
     {Mod (mu, tm)}
 ;
+
+term:
+| td = term_desc { Located.locate td $startpos $endpos }
 
 mode:
   | s = name

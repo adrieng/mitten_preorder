@@ -21,10 +21,10 @@ sig
   val eq_mod : m -> m -> bool
 
   val mode_to_sexp : mode -> Sexp.t
-  val mode_pp : mode -> string
+  val mode_pp : mode Printer.t
 
   val mod_to_sexp : m -> Sexp.t
-  val mod_pp : m -> string
+  val mod_pp : m Printer.t
 
   (* Binding functions, inspiration can be taken from the guarded_mode_theory.ml file.
    *  Note, that during the binding process modalities have to be checked for composability!!*)

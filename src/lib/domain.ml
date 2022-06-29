@@ -163,8 +163,9 @@ let to_sexp = go_to_sexp 0 []
 let to_sexp_nf = go_to_sexp_nf 0 []
 let to_sexp_ne = go_to_sexp_ne 0 []
 
-let pp t = to_sexp (Val t) |> Sexp.to_string_hum
-let pp_nf t = to_sexp_nf t |> Sexp.to_string_hum
-let pp_ne t = to_sexp_ne t |> Sexp.to_string_hum
-let pp_clos size env clos = go_to_sexp_clos size env clos |> Sexp.to_string_hum
-let pp_env env = Sexp.List (List.map to_sexp env) |> Sexp.to_string_hum
+let pp = Printer.sexp (fun t -> to_sexp (Val t))
+let pp_nf = Printer.sexp to_sexp_nf
+let pp_ne = Printer.sexp to_sexp_ne
+let pp_clos =
+  Printer.sexp (fun (size, env, clos) -> go_to_sexp_clos size env clos)
+let pp_env = Printer.sexp (fun env -> Sexp.List (List.map to_sexp env))

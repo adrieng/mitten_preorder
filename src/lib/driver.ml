@@ -3,14 +3,16 @@ module S = Syntax
 module D = Domain
 module M = Mode_theory
 
-type env = Env of {size : int; check_env : Check.env; bindings : string list}
+type ident = CS.ident
+
+type env = Env of {size : int; check_env : Check.env; bindings : ident list}
 
 let initial_env = Env {size = 0; check_env = []; bindings = []}
 
 type output =
     NoOutput of env
   | NF_term of S.t * S.t
-  | NF_def of CS.ident * S.t
+  | NF_def of ident * S.t
   | Quit
 
 let update_env env = function
@@ -21,35 +23,38 @@ let output (Env {bindings; _}) = function
   | NoOutput _ -> ()
   | NF_term (s, t) ->
     let open Sexplib in
-    let s_rep =
-      Syntax.to_sexp (List.map (fun x -> Sexp.Atom x) bindings) s
-      |> Sexp.to_string_hum in
-    Printf.printf "Computed normal form of\n  %s\nas\n  %s\n" s_rep (S.pp t)
-  | NF_def (name, t) -> Printf.printf "Computed normal form of [%s]:\n  %s\n" name (S.pp t)
+    let s_rep = Syntax.to_sexp (List.map (fun x -> Sexp.Atom x) bindings) s in
+    Format.printf "@[<v 2>Computed normal form of %a@ as@ %a@]@."
+      Sexp.pp_hum s_rep
+      S.pp t
+  | NF_def (name, t) ->
+     Format.printf "@[<v 2>Computed normal form of [%s]:@ %a@]@."
+       name
+       S.pp t
   | Quit -> exit 0
 
-let find_idx key =
+let find_idx source key =
   let rec go i = function
-    | [] -> raise (Check.Type_error (Check.Misc ("Unbound variable: " ^ key)))
-    | x :: xs -> if String.equal x key then i else go (i + 1) xs in
+    | [] -> Check.Error.(raise ~source (Unbound_variable key))
+    | x :: xs -> if x = key then i else go (i + 1) xs in
   go 0
 
-let rec int_to_term = function
+let rec int_to_term_desc = function
   | 0 -> S.Zero
-  | n -> S.Suc (int_to_term (n - 1))
+  | n -> S.Suc (Located.locate_nowhere (int_to_term_desc (n - 1)))
 
 let rec unravel_spine f = function
   | [] -> f
   | x :: xs -> unravel_spine (x f) xs
 
-let rec bind env = function
-  | CS.Var i -> S.Var (find_idx i env)
+let rec bind_desc env position = function
+  | CS.Var i -> S.Var (find_idx position i env)
   | CS.Let (tp, Binder {name; body}) ->
     S.Let (bind env tp, bind (name :: env) body)
   | CS.Check {term; tp} -> S.Check (bind env term, bind env tp)
   | CS.Nat -> S.Nat
   | CS.Suc t -> S.Suc (bind env t)
-  | CS.Lit i -> int_to_term i
+  | CS.Lit i -> int_to_term_desc i
   | CS.NRec
       { mot = Binder {name = mot_name; body = mot_body};
         zero;
@@ -62,12 +67,15 @@ let rec bind env = function
        bind env nat)
   | CS.Pi (mu, src, Binder {name; body}) -> S.Pi (M.bind_m mu, bind env src, bind (name :: env) body)
   | CS.Lam (BinderN {names = []; body}) ->
-    bind env body
+     Located.v @@ bind env body
   | CS.Lam (BinderN {names = x :: names; body}) ->
-    let lam = CS.Lam (BinderN {names; body}) in
+    let lam = Located.locate_nowhere (CS.Lam (BinderN {names; body})) in
     S.Lam (bind (x :: env) lam)
   | CS.Ap (f, args) ->
-    List.map (fun (mu, t) f -> S.Ap (M.bind_m mu, f, bind env t)) args |> unravel_spine (bind env f)
+     let mk (mu, t) f =
+       Located.locate_nowhere (S.Ap (M.bind_m mu, f, bind env t))
+     in
+     List.map mk args |> unravel_spine (bind env f) |> Located.v
   | CS.Sig (tp, Binder {name; body}) ->
     S.Sig (bind env tp, bind (name :: env) body)
   | CS.Pair (l, r) -> S.Pair (bind env l, bind env r)
@@ -90,7 +98,10 @@ let rec bind env = function
   | CS.Letmod (mu, nu, Binder {name; body}, Binder {name = name1; body = body1}, tp) ->
     S.Letmod (M.bind_m mu, M.bind_m nu, bind (name :: env) body, bind (name1 :: env) body1, bind env tp)
 
-let process_decl (Env {size; check_env; bindings})  = function
+and bind env t = Located.map_with_pos (bind_desc env) t
+
+let process_decl (Env {size; check_env; bindings}) t =
+  match t.Located.value with
   | CS.Def {name; def; tp; md} ->
     let bind_md = M.bind_mode md in
     let def = bind bindings def in
@@ -103,9 +114,10 @@ let process_decl (Env {size; check_env; bindings})  = function
     let new_entry = Check.TopLevel {term = sem_def; tp = sem_tp; md = bind_md} in
     NoOutput (Env {size = size + 1; check_env = new_entry :: check_env; bindings = name :: bindings })
   | CS.NormalizeDef name ->
-    let err = Check.Type_error (Check.Misc ("Unbound variable: " ^ name)) in
+    let err = Check.Error.(raise (Unbound_variable name)) in
     begin
-      match List.nth check_env (find_idx name bindings) with
+      let idx = find_idx t.Located.position name bindings in
+      match List.nth check_env idx with
       | Check.TopLevel {term; tp; md = _} -> NF_def (name, Nbe.read_back_nf 0 (D.Normal {term; tp}))
       | _ -> raise err
       | exception Failure _ -> raise err

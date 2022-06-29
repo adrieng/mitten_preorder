@@ -36,21 +36,58 @@ let env_pp lst = Sexp.List (env_to_sexp lst) |> Sexp.to_string_hum
 
 let add_term ~md ~term ~mu ~tp env = Term {term; mu; tp; md} :: env
 
-type error =
-    Cannot_synth_term of Syn.t
-  | Type_mismatch of D.t * D.t
-  | Expecting_universe of D.t
-  | Misc of string
+module Error = struct
+  type kind =
+    | Cannot_synth_term of Syntax.t
+    | Type_mismatch of Domain.t * Domain.t
+    | Expecting_universe of Domain.t
+    | Unbound_variable of Concrete_syntax.ident
+    | Incompatible_modes of mode * mode
+    | Incompatible_modalities of m * m
+    | Cannot_coerce of m * m
+    | Internal of string
 
-let pp_error = function
-  | Cannot_synth_term t -> "Cannot synthesize the type of:\n" ^ Syn.pp t
-  | Type_mismatch (t1, t2) -> "Cannot equate\n" ^ D.pp t1 ^ "\nwith\n" ^ D.pp t2
-  | Expecting_universe d -> "Expected some universe but found\n" ^ D.pp d
-  | Misc s -> s
+  type t = kind Located.t
 
-exception Type_error of error
+  exception E of t
 
-let tp_error e = raise (Type_error e)
+  let raise ?(source = Span.nowhere) kind =
+    raise (E Located.{ value = kind; position = source; })
+
+  let internal reason =
+    raise (Internal reason)
+
+  let pp_kind fmt = function
+  | Cannot_synth_term t ->
+     Format.fprintf fmt "cannot synthesize the type of@ %a"
+       Syn.pp t
+  | Type_mismatch (t1, t2) ->
+     Format.fprintf fmt "cannot equate@ %a with@ %a"
+       D.pp t1
+       D.pp t2
+  | Expecting_universe d ->
+     Format.fprintf fmt "expected some universe but found@ %a"
+       D.pp d
+  | Unbound_variable x ->
+     Format.fprintf fmt "unbound variable %s" x
+  | Incompatible_modes (m, n) ->
+     Format.fprintf fmt "modes@ %a and@ %a @,do not match"
+       Mode_theory.mode_pp m
+       Mode_theory.mode_pp n
+  | Incompatible_modalities (mu, nu) ->
+     Format.fprintf fmt "modalities@ %a and@ %a @,do not match"
+       Mode_theory.mod_pp mu
+       Mode_theory.mod_pp nu
+  | Cannot_coerce (mu, nu) ->
+     Format.fprintf fmt "could not find a coercion @[%a -->@ %a@]"
+       Mode_theory.mod_pp mu
+       Mode_theory.mod_pp nu
+  | Internal reason ->
+     Format.fprintf fmt "internal error (%s)"
+       reason
+
+  let pp = Located.print_located pp_kind
+end
 
 let env_to_sem_env =
   List.map
@@ -61,15 +98,15 @@ let env_to_sem_env =
 
 let rec nth_lockless lst i =
   match lst with
-  | [] -> tp_error (Misc "nth_lockless should not reach the empty list")
+  | [] -> invalid_arg "nth_lockless should not reach the empty list"
   | head :: lst ->
     match head with
     | Term {term; mu; tp; md} -> if Int.equal i 0 then (Term {term ; mu; tp; md} , idm)
       else if i > 0 then nth_lockless lst (i - 1)
-      else tp_error (Misc "nth_lockless does not accept negativ Input")
+      else invalid_arg "nth_lockless does not accept negativ Input"
     | TopLevel {term ; tp; md} -> if Int.equal i 0 then (TopLevel {term ; tp; md} , idm)
       else if i > 0 then nth_lockless lst (i - 1)
-      else tp_error (Misc "nth_lockless does not accept negativ Input")
+      else invalid_arg "nth_lockless does not accept negativ Input"
     | M mu -> let (tm, nu) = nth_lockless lst i in
       (tm , compm (nu, mu))
 
@@ -79,35 +116,32 @@ let nth_cell lst i = snd (nth_lockless lst i)
 let get_var env n = match nth_tm env n with
   | Term {term = _; mu; tp; md} -> (Some mu, tp, md)
   | TopLevel {tp; term = _; md} -> (None, tp, md)
-  | _ -> raise (Type_error (Misc "This case of get_var should not be reached"))
+  | _ -> Error.(internal "This case of get_var should not be reached")
 
-let assert_subtype m size t1 t2 =
-  if Nbe.check_tp m ~subtype:true size t1 t2
-  then ()
-  else tp_error (Type_mismatch (t1, t2))
+let assert_subtype source m size t1 t2 =
+  if not (Nbe.check_tp m ~subtype:true size t1 t2)
+  then Error.(raise ~source (Type_mismatch (t1, t2)))
 
-let assert_equal m size t1 t2 tp =
-  if Nbe.check_nf m size (D.Normal {tp; term = t1}) (D.Normal {tp; term = t2})
-  then ()
-  else tp_error (Type_mismatch (t1, t2))
+let assert_equal source m size t1 t2 tp =
+  if not (Nbe.check_nf m size
+            (D.Normal {tp; term = t1})
+            (D.Normal {tp; term = t2}))
+  then Error.(raise ~source (Type_mismatch (t1, t2)))
 
-let check_mode m n =
-  if eq_mode m n
-  then ()
-  else tp_error (Misc ("Modes do not match " ^ mode_pp m ^ " /= " ^ mode_pp n))
+let check_mode source m n =
+  if not (eq_mode m n) then Error.(raise ~source (Incompatible_modes (m, n)))
 
-let check_mod nu mu errorspec =
-  if eq_mod nu mu
-  then ()
-  else tp_error (Misc ("Modalities do not match\n" ^ mod_pp nu ^" and " ^ mod_pp mu ^ "\n" ^ errorspec))
+let check_mod source nu mu _errorspec =
+  if not (eq_mod nu mu)
+  then Error.(raise ~source (Incompatible_modalities (nu, mu)))
 
-let check_cell mu nu =
-  if leq mu nu
-  then ()
-  else tp_error (Misc ("Cannot finde 2-cell" ^ mod_pp mu ^ "-->" ^ mod_pp nu))
+let check_cell source mu nu =
+  if not (leq mu nu)
+  then Error.(raise ~source (Cannot_coerce (mu, nu)))
 
 let rec check ~env ~size ~term ~tp ~m =
-  match term with
+  let source = term.Located.position in
+  match term.Located.value with
   | Syn.Let (def, body) ->
     let def_tp = synth ~env ~size ~term:def ~m in
     let def_val = Nbe.eval def (env_to_sem_env env) in
@@ -116,7 +150,7 @@ let rec check ~env ~size ~term ~tp ~m =
     begin
       match tp with
       | D.Uni _ -> ()
-      | t -> tp_error (Expecting_universe t)
+      | t -> Error.(raise ~source (Expecting_universe t))
     end
   | Syn.Sig (l, r) ->
     check ~env ~size ~term:l ~tp ~m;
@@ -124,7 +158,7 @@ let rec check ~env ~size ~term ~tp ~m =
     let var = D.mk_var l_sem size in
     check ~env:(add_term ~md:m ~term:var ~mu:idm ~tp:l_sem env) ~size ~term:r ~tp ~m
   | Syn.Pi (mu, l, r) ->
-    check_mode (cod_mod mu m) m;
+    check_mode term.Located.position (cod_mod mu m) m;
     let new_env = M mu :: env in
     let new_mode = dom_mod mu m in
     check ~env:new_env ~size ~term:l ~tp ~m:new_mode;
@@ -139,7 +173,8 @@ let rec check ~env ~size ~term ~tp ~m =
         let var = D.mk_var src size in
         let dest_tp = Nbe.do_clos dest var in
         check ~env:(add_term ~md:new_mode ~term:var ~tp:src ~mu:mu env) ~size:(size + 1) ~term:f ~tp:dest_tp ~m ;
-      | t -> tp_error (Misc ("Expecting Pi but found\n" ^ D.pp t))
+      | t ->
+         Error.internal ("Expecting Pi but found\n" ^ Printer.to_string D.pp t)
     end
   | Syn.Pair (left, right) ->
     begin
@@ -148,16 +183,18 @@ let rec check ~env ~size ~term ~tp ~m =
         check ~env ~size ~term:left ~tp:left_tp ~m;
         let left_sem = Nbe.eval left (env_to_sem_env env) in
         check ~env ~size ~term:right ~tp:(Nbe.do_clos right_tp left_sem) ~m
-      | t -> tp_error (Misc ("Expecting Sig but found\n" ^ D.pp t))
+      | t ->
+         Error.internal ("Expecting Sig but found\n" ^ Printer.to_string D.pp t)
     end
   | Syn.Uni i ->
     begin
       match tp with
       | Uni j when i < j -> ()
       | t ->
-        let msg =
-          "Expecting universe over " ^ string_of_int i ^ " but found\n" ^ D.pp t in
-        tp_error (Misc msg)
+        let reason =
+          "Expecting universe over " ^ string_of_int i ^ " but found "
+          ^ Printer.to_string D.pp t in
+        Error.internal reason
     end
   | Syn.TyMod (mu, a) ->
     check_mode (cod_mod mu m) m;

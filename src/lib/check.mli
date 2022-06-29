@@ -7,15 +7,27 @@ type env = env_entry list
 
 val env_to_sem_env : env -> Domain.env
 
-type error =
-    Cannot_synth_term of Syntax.t
-  | Type_mismatch of Domain.t * Domain.t
-  | Expecting_universe of Domain.t
-  | Misc of string
+module Error : sig
+  type kind =
+    | Cannot_synth_term of Syntax.t
+    | Type_mismatch of Domain.t * Domain.t
+    | Expecting_universe of Domain.t
+    | Unbound_variable of Concrete_syntax.ident
+    | Incompatible_modes of mode * mode
+    | Incompatible_modalities of m * m
+    | Cannot_coerce of m * m
+    | Internal of string
 
-val pp_error : error -> string
+  type t = kind Located.t
 
-exception Type_error of error
+  exception E of t
+
+  val raise : ?source:Span.t -> kind -> 'a
+
+  val internal : string -> 'a
+
+  val pp : t Printer.t
+end
 
 val check : env:env -> size:int -> term:Syntax.t -> tp:Domain.t -> m:mode -> unit
 val synth : env:env -> size:int -> term:Syntax.t -> m:mode -> Domain.t

@@ -117,7 +117,7 @@ let mode_to_sexp = function
   | S -> Sexp.Atom "s"
   | T -> Sexp.Atom "t"
 
-let mode_pp m = mode_to_sexp m |> Sexp.to_string_hum
+let mode_pp = Printer.sexp mode_to_sexp
 
 let m_constr_sexp mu =
   match mu with
@@ -132,7 +132,8 @@ let mod_to_sexp mu =
     | mu :: tail -> m_constr_sexp mu :: rec_helper tail in
   Sexp.List (rec_helper mu)
 
-let mod_pp mu = mod_to_sexp mu |> Sexp.to_string_hum
+let mod_pp = Printer.sexp mod_to_sexp
+let mode_pp = Printer.sexp mode_to_sexp
 
 (* Maps for binding modalities, cells and modes *)
 
@@ -176,4 +177,5 @@ let rec bind_m mu =
     let bound_mod = (find_mod str) in
     let bound_tail = bind_m tail in
     if equal_mode (cod_m_constr bound_mod) (dom_mod bound_tail (cod_m_constr bound_mod)) then bound_mod :: bound_tail
-    else error_m (mod_pp (bound_mod :: bound_tail) ^ " is not well-formed")
+    else error_m (Printer.to_string mod_pp (bound_mod :: bound_tail)
+                  ^ " is not well-formed")

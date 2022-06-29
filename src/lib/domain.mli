@@ -42,8 +42,8 @@ val to_sexp : envhead -> Sexplib.Sexp.t
 val to_sexp_nf : nf -> Sexplib.Sexp.t
 val to_sexp_ne : ne -> Sexplib.Sexp.t
 
-val pp : t -> string
-val pp_nf : nf -> string
-val pp_ne : ne -> string
-val pp_clos : int -> Sexp.t list -> clos -> string
-val pp_env : envhead list -> string
+val pp : t Printer.t
+val pp_nf : nf Printer.t
+val pp_ne : ne Printer.t
+val pp_clos : (int * Sexp.t list * clos) Printer.t
+val pp_env : envhead list Printer.t

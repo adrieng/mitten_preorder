@@ -1,6 +1,6 @@
 open Mode_theory
 type uni_level = int
-and t =
+and t_desc =
   | Var of int (* DeBruijn indices for variables *)
   | Let of t * (* BINDS *) t | Check of t * t
   | Nat | Zero | Suc of t | NRec of (* BINDS *) t * t * (* BINDS 2 *) t * t
@@ -12,6 +12,8 @@ and t =
   | Mod of m * t
   | Letmod of m * m * (* BINDS *) t * (* BINDS *) t * t
   | Axiom of string * t
+and t = t_desc Located.t
+
 (*In contrast to the Domain letmod here we do not include the typing information for the modal argument*)
 type envhead =
   | Ty of t
@@ -24,4 +26,5 @@ val env_length : envhead list -> int
 exception Illformed
 (*  val of_sexp : Sexplib.Sexp.t -> t *)
 val to_sexp : Sexplib.Sexp.t list -> t -> Sexplib.Sexp.t
-val pp : t -> string
+val to_string : t -> string
+val pp : Format.formatter -> t -> unit

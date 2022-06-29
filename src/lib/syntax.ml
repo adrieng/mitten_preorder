@@ -2,7 +2,7 @@ open Sexplib
 open Mode_theory
 type uni_level = int
 
-type t =
+type t_desc =
   | Var of int (* DeBruijn indices for variables *)
   | Let of t * (* BINDS *) t | Check of t * t
   | Nat | Zero | Suc of t | NRec of (* BINDS *) t * t * (* BINDS 2 *) t * t
@@ -14,6 +14,8 @@ type t =
   | Mod of m * t
   | Letmod of m * m * (* BINDS *) t * (* BINDS *) t * t
   | Axiom of string * t
+
+and t = t_desc Located.t
 
 type envhead =
   | Ty of t
@@ -43,7 +45,7 @@ let find_idx ~equal key xs =
 
 let to_sexp env t =
   let counter = ref 0 in
-  let rec int_of_syn = function
+  let rec int_of_syn t = match t.Located.value with
     | Zero -> Some 0
     | Suc t ->
       begin
@@ -52,7 +54,7 @@ let to_sexp env t =
         | None -> None
       end
     | _ -> None in
-  let rec go env = function
+  let rec go env t = match t.Located.value with
     (* need pp for cells to pretty print variables also for non trivial cells *)
     | Var i -> if i >= List.length env
       then Sexp.Atom ("free" ^ string_of_int i)
@@ -126,4 +128,6 @@ let to_sexp env t =
     | Axiom (str, _) -> Sexp.Atom str in
   go env t
 
-let pp t = to_sexp [] t |> Sexp.to_string_hum
+let to_string t = to_sexp [] t |> Sexp.to_string_hum
+
+let pp fmt t = Sexp.pp_hum fmt (to_sexp [] t)

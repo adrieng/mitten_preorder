@@ -75,7 +75,8 @@ and do_j mot refl eq =
             term = D.J (mot, refl, tp, left, right, term) }
       | _ -> raise (Nbe_failed "Not an Id in do_j")
     end
-  | p -> raise (Nbe_failed ("Not a refl or neutral in do_j \n Eqtm: " ^ D.pp p))
+  | p -> raise (Nbe_failed ("Not a refl or neutral in do_j \n Eqtm: "
+                            ^ Printer.to_string D.pp p))
 
 and do_mod nu tyclos clos tm =
   match tm with
@@ -91,7 +92,7 @@ and do_mod nu tyclos clos tm =
   | _ -> raise (Nbe_failed "Not a Mod or Neutral in do_mod")
 
 and eval t (env : D.env) =
-  match t with
+  match t.Located.value with
   | Syn.Var id -> D.env_val env id
   | Syn.Let (def, body) -> eval body ((D.Val (eval def env)) :: env)
   | Syn.Check (term, _) -> eval term env
@@ -127,7 +128,7 @@ and eval t (env : D.env) =
   | Syn.Axiom (str, tp) -> D.Neutral {tp = eval tp env; term = D.Axiom (str, eval tp env)}
 
 (* Nested matching necessary. We cannot match just on nf, since we need to push tp before *)
-let rec read_back_nf size nf =
+let rec read_back_nf_desc size nf =
   match nf with
   (* Functions *)
   | D.Normal {tp; term = v} ->
@@ -178,7 +179,8 @@ let rec read_back_nf size nf =
           )
         | D.Tymod (mu, tp) -> Syn.TyMod (mu, read_back_nf size (D.Normal {tp = D.Uni i; term = tp }))
         | D.Neutral {term = ne; _} -> read_back_ne size ne
-        | errtm -> raise (Nbe_failed ("element of universe expected in read_back_nf\n False term: " ^ D.pp errtm))
+        | errtm -> raise (Nbe_failed ("element of universe expected in read_back_nf\n False term: "
+                                      ^ Printer.to_string D.pp errtm))
       end
     | D.Neutral _ ->
       begin
@@ -207,10 +209,12 @@ let rec read_back_nf size nf =
       end
     | _ -> raise (Nbe_failed "Ill-typed read_back_nf")
 
+and read_back_nf size d =
+  Located.locate_nowhere (read_back_nf_desc size d)
 
-and read_back_tp size d =
+and read_back_tp_desc size position d =
   match d with
-  | D.Neutral {term; _} -> read_back_ne size term
+  | D.Neutral {term; _} -> read_back_ne_desc position size term
   | D.Nat -> Syn.Nat
   | D.Pi (mu, src, dest) ->
     let var = D.mk_var src size in
@@ -227,7 +231,9 @@ and read_back_tp size d =
   | D.Tymod (mu, tp) -> Syn.TyMod (mu, read_back_tp size tp)
   | _ -> raise (Nbe_failed "Not a type in read_back_tp")
 
-and read_back_ne size ne =
+and read_back_tp size t = Located.map_with_pos (read_back_tp_desc size) t
+
+and read_back_ne_desc position size ne =
   match ne with
   | D.Var x -> Syn.Var (size - (x + 1))
   | D.Ap (mu, ne, arg) -> Syn.Ap (mu, read_back_ne size ne, read_back_nf size arg)
@@ -266,7 +272,7 @@ and read_back_ne size ne =
     Syn.J (mot_syn, refl_syn, eq_syn)
   | D.Axiom (str, tp) -> Syn.Axiom (str, read_back_tp size tp)
 
-
+and read_back_ne size = Located.map_with_pos (read_back_ne_desc size)
 
 let rec check_nf m size nf1 nf2 =
   match nf1, nf2 with

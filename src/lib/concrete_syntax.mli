@@ -15,7 +15,8 @@ type binder = Binder of {name : ident; body : t}
 and bindern = BinderN of {names : ident list; body : t}
 and binder2 = Binder2 of {name1 : ident; name2 : ident; body : t}
 and binder3 = Binder3 of {name1 : ident; name2 : ident; name3 : ident; body : t}
-and t =
+and t = t_desc Located.t
+and t_desc =
   | Var of ident
   | Let of t * binder
   | Check of {term : t; tp : t}
@@ -38,11 +39,13 @@ and t =
   | Mod of m * t
   | Letmod of m * m * binder * binder * t
 
-type decl =
+type decl_desc =
     Def of {name : ident; def : t; tp : t; md : mode}
   | NormalizeDef of ident
   | NormalizeTerm of {term : t; tp : t; md : mode}
   | Axiom of {name : ident; tp : t; md : mode}
   | Quit
+
+and decl = decl_desc Located.t
 
 type signature = decl list
