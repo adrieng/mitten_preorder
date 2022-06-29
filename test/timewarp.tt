@@ -1,13 +1,15 @@
 let next : (A : U<0>) -> A -> << `[0(1)] | A >> @ S =
     fun A -> fun x -> mod `[0(1)] x
 
+let id : (A : U<0>) -> A -> A @ S = fun A -> fun x -> x
+
 let next2 : (A : U<0>)
-            -> << `[(2)] | << `[5(1)] | A >> >>
-            -> << `[1(2)] | A >> @ S =
+            -> << `[(0 2)] | << `[(0 1)] | A >> >>
+            -> << `[(0 1)] | A >> @ S =
   fun A -> fun x ->
-    letmod `[(2)] . `[0(1)] (fun z -> A) mod `[(2)] (x2) <- x in
-    letmod `[(2)] . `[0(1)] (fun z -> A) mod `[(2)] (x2) <- x in
-    x
+    letmod `[(1)] (fun z -> << `[(0 1)] | A >>) mod `[(0 2)] (x2) <- x in
+    letmod `[(1)] (fun z -> << `[(0 1)] | A >>) mod `[(0 1)] (x3) <- x2 in
+    mod `[(0 1)] x3
 
 axiom lob : (A : U<0>) -> ({`[0(1)] | A} -> A) -> A @ S
 axiom lobU : ({`[0(1)] | U<0>} -> U<0>) -> U<0> @ S
